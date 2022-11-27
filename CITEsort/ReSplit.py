@@ -22,26 +22,72 @@ import copy
 import random
 
 
-def ReSplit(data,merge_cutoff=0.1,weight=1,max_k=10,max_ndim=2,bic='bic'):
+def ReSplit(data,leaf_dict,merge_cutoff=0.1,weight=1,max_k=10,max_ndim=2,bic='bic'): #leaf_dict save leaf node at that time, null in initial
     
-    root = BTree(('leaf',))
-    root.indices = data.index.values.tolist()
-    root.weight = weight
+    root = BTree(('leaf',)) # construct sort tree
+    root.indices = data.index.values.tolist() # 
+    root.weight = weight # mean of cells in this node of parent node feature
+    
     #if len(root.indices) < 500:
     #    print(root.indices)
      
+    # Stop Condition1: when num of cells in this node is too small
     if data.shape[0] < 2:        
         root.all_clustering_dic = _set_small_leaf(data)
         root.stop = 'small size'
         return root
     
+    
     unimodal = GaussianMixture(1,covariance_type='full').fit(data)
-    root.ll = root.weight * unimodal.lower_bound_
+    root.ll = root.weight * unimodal.lower_bound_ # Lower bound value on the log-likelihood (of the training data with respect to the model) of the best fit of EM.
     root.bic = unimodal.bic(data)
     
-    separable_features, bipartitions, scores_ll, bic_list, all_clustering_dic = HiScanFeatures(data,root,merge_cutoff,max_k,max_ndim,bic)
+    # Find feature to divide cells
     
-    if len(separable_features) == 0:
+    # if initial, put root in leaf dict
+    if leaf_dict==None:
+        leaf_dict = dict(keys=[0],values=[root])
+        root.ind = 0
+    else:
+        root.ind = max(leaf_dict.keys()) + 1
+        leaf_dict[root.ind] = root
+    
+    ### _____Choose maxmum loglikely hood gain as new root_____
+    max_ll, max_root, separable = 0, None, False
+    for node in leaf_dict.items():
+        separable_features, bipartitions, scores_ll, bic_list, all_clustering_dic = HiScanFeatures(data,node,merge_cutoff,max_k,max_ndim,bic)
+        if len(separable_features) == 0:
+            continue
+        separable = True
+        
+        #print(separable_features)
+        #print(scores_ll)
+        #print(bic_list)
+        idx_best = np.argmax(scores_ll)
+        if np.max(scores_ll) < 0.001:
+        #if root.bic < bic_list[idx_best]:
+            root.stop = 'spliting increases bic'
+            return root
+        
+        #idx_best = np.argmax(scores_ent)
+        best_feature = separable_features[idx_best]
+        best_partition = bipartitions[best_feature]
+        best_score = scores_ll[idx_best]
+        #best_weights = all_clustering_dic[len(best_feature)][best_feature]['weight']
+
+        
+        if best_score >= max_ll:
+            max_ll = best_score
+            max_root = node
+        else:
+            leaf_dict.pop(node.ind)
+            leaf_dict[node.ind] = node
+
+    #separable_features, bipartitions, scores_ll, bic_list, all_clustering_dic = HiScanFeatures(data,root,merge_cutoff,max_k,max_ndim,bic)
+    
+    # Stop Condition2: can not find seperable features
+    
+    if separable:
         root.all_clustering_dic = all_clustering_dic
         root.stop = 'no separable features'
         return root
@@ -64,19 +110,7 @@ def ReSplit(data,merge_cutoff=0.1,weight=1,max_k=10,max_ndim=2,bic='bic'):
         scores_ll[fidx] = (ll1 + ll0) * root.weight - root.ll
         bic_list[fidx] = bic1 + bic0
     '''
-    #print(separable_features)
-    #print(scores_ll)
-    #print(bic_list)
-    idx_best = np.argmax(scores_ll)
-    if np.max(scores_ll) < 0.001:
-    #if root.bic < bic_list[idx_best]:
-        root.stop = 'spliting increases bic'
-        return root
-    
-    #idx_best = np.argmax(scores_ent)
-    best_feature = separable_features[idx_best]
-    best_partition = bipartitions[best_feature]
-    #best_weights = all_clustering_dic[len(best_feature)][best_feature]['weight']
+   
     
     ## construct current node  
     root.key = best_feature
@@ -113,12 +147,18 @@ def ReSplit(data,merge_cutoff=0.1,weight=1,max_k=10,max_ndim=2,bic='bic'):
     root.left = ReSplit(child_left,merge_cutoff,weight * w_l,max_k,max_ndim,bic)
     root.right = ReSplit(child_right,merge_cutoff,weight * w_r,max_k,max_ndim,bic)
 
+    # if root.weight == 1:
+    #     import matplotlib.pyplot as plt
+    #     plt.plot(np.array(range(len(bic_list))),bic_list)
+    #     plt.savefig('BIC.png')
+
     return root
 
 
 
 def HiScanFeatures(data,root,merge_cutoff,max_k,max_ndim,bic):
     
+    # Try to separate on one dimension
     ndim = 1
     all_clustering_dic = {}
     separable_features, bipartitions, scores, bic_list, all_clustering_dic[ndim] = ScoreFeatures(data,root,merge_cutoff,max_k,ndim,bic)
@@ -146,7 +186,7 @@ def HiScanFeatures(data,root,merge_cutoff,max_k,max_ndim,bic):
 
 def ScoreFeatures(data,root,merge_cutoff,max_k,ndim,bic):
     
-    F_set = data.columns.values.tolist()
+    F_set = data.columns.values.tolist() # Feature list
     
     all_clustering = {}
     separable_features = []
@@ -154,7 +194,7 @@ def ScoreFeatures(data,root,merge_cutoff,max_k,ndim,bic):
     scores = []
     bic_list = []
         
-    for item in itertools.combinations(F_set, ndim):
+    for item in itertools.combinations(F_set, ndim): # When ndim=1, search one feature each time. When ndim=2, search two features each time.
         x = data.loc[:,item]
         all_clustering[item] = Clustering(x,merge_cutoff,max_k,bic)
     

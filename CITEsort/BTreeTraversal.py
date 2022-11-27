@@ -31,7 +31,7 @@ class BTreeTraversal:
         self.tree = tree
         self.method = method
         if self.method == 'bfs':
-            self.nodelist = self.levelOrderTraversal()
+            self.nodelist, self.best_leaf = self.levelOrderTraversal()
         if self.method == 'dfs':
             self.nodelist = self.preorderTraversal()
         
@@ -86,7 +86,9 @@ class BTreeTraversal:
         """generate label (one column, indicating which leaf cells are assigned.)"""
         label = pd.DataFrame({'GEM':self.tree.indices,'Label':[None]*len(self.tree.indices)},index=self.tree.indices)
         for i in range(len(self.nodename)):
-            if self.nodename[i].split('_')[1] == 'leaf':
+            # if self.nodename[i].split('_')[1] == 'leaf':
+            #     label.loc[self.nodelist[i].indices,'Label'] = self.nodename[i]
+            if self.nodename[i].split('_')[0] in self.best_leaf:
                 label.loc[self.nodelist[i].indices,'Label'] = self.nodename[i]
                 
         return label
@@ -215,6 +217,23 @@ class BTreeTraversal:
         return nodelist
 
 
+    def all_BIC(self, queue):
+        ll, n_features = 0, 0
+        n_sample = len(self.tree.indices)
+        node_name = []
+        for key,node in queue.items():
+            ll = ll + node.ll * node.weight 
+            n_features = n_features + len(node.all_clustering_dic)
+            node_name.append(str(key))
+            if len(node.all_clustering_dic) >2:
+                print(node.all_clustering_dic)
+        cov_params = len(queue) * n_features * (n_features + 1) / 2.0
+        mean_params = n_features * len(queue)
+        n_param = int(cov_params + mean_params + len(queue) - 1)
+        bic = -2 * ll * n_sample + n_param * np.log(n_sample)
+        print(node_name) 
+        return bic, node_name
+
     # bfs
     def levelOrderTraversal(self): 
         #print('bfs...')
@@ -224,25 +243,45 @@ class BTreeTraversal:
 
         queue = [] 
         nodelist = []
+        BIC_list, n_cluster_list = [], []
+        bic_queue = {}
+        leaf_ind = 0
 
         queue.append(node) 
         nodelist.append(node)
-
+        bic_queue[leaf_ind] = node
+        node_dict = {}
+        
         while(len(queue) > 0): 
-            node = queue.pop(0)         
+            node = queue.pop(0)  
+            name = str(node)
+            if node.left is not None and node.right is not None:
+                bic_queue = {key:val for key, val in bic_queue.items() if str(val) != name}
 
-            if node.left is not None: 
+            if node.left is not None:                
                 nodelist.append(node.left)
                 queue.append(node.left)
+                leaf_ind = leaf_ind + 1
+                bic_queue[leaf_ind] = node.left
 
             if node.right is not None: 
                 nodelist.append(node.right)
-                queue.append(node.right) 
+                queue.append(node.right)
+                leaf_ind = leaf_ind + 1
+                bic_queue[leaf_ind] = node.right
+                bic, node_name = self.all_BIC(bic_queue)
+                BIC_list.append(bic)
+                n_cluster_list.append(len(node_name))
+                node_dict[bic] = node_name
+        min_node = min(list(node_dict.keys()))
+        min_list = node_dict[min_node]
+        print(n_cluster_list, BIC_list)
+        plt.plot(n_cluster_list, BIC_list)
+        plt.savefig('BIC_as_split.png')
+        return nodelist, min_list
 
-        return nodelist
 
-
-
+ 
 
 
 
