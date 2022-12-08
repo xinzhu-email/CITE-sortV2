@@ -242,8 +242,8 @@ def plot_keymarker(data,traversal,node_ID,dpi=5,savepath=None):
         mp_ncluster = clustering['mp_ncluster']
         #mp_clustering = clustering['mp_clustering']
         componentidx = np.array(clustering['mp_clustering'])==1
-        p1_mean = node_data.loc[componentidx,marker_dkey].mean(0)
-        p2_mean = node_data.loc[~componentidx,marker_dkey].mean(0)
+        p1_mean = node_data.loc[componentidx,marker_dkey].mean(axis=0)
+        p2_mean = node_data.loc[~componentidx,marker_dkey].mean(axis=0)
         
         p1_cosine = sum(p1_mean)/np.sqrt(sum(p1_mean**2))
         p2_cosine = sum(p2_mean)/np.sqrt(sum(p2_mean**2))
@@ -300,6 +300,7 @@ def visualize_tree(root,data,outpath,filename,compact=False):
     queue = [] 
     nodelist = []
     idxStack = []
+    indStack = []
     
     tot_cells = len(root.indices)
     #means_in_root = root.marker_summary['mean']
@@ -318,20 +319,23 @@ def visualize_tree(root,data,outpath,filename,compact=False):
     queue.append(node) 
     
     i = 0
-    #print(str(i)+'_'+root.key)
+    #print(str(node.ind)+'_'+root.key)
     all_clustering = node.all_clustering_dic[len(node.key)]
     bp_ncluster = all_clustering[node.key]['bp_ncluster']
     mp_ncluster = all_clustering[node.key]['mp_ncluster']
-    tree_dot.writelines(str(i)+' [label="'+str(i)+'_'+'_'.join(node.key)+ \
+    tree_dot.writelines(str(node.ind)+' [label="'+str(node.ind)+'_'+'_'.join(node.key)+ \
                         '\\nNum: '+str(len(node.indices))+ \
                         '\\n('+str(mp_ncluster)+'|'+str(bp_ncluster)+')",fillcolor="#ff9966ff",fontsize=25];')  
     nodelist.append(node.key)
     idxStack.append(i)
+    indStack.append(node.ind)
     
     while(len(queue) > 0): 
         # Print front of queue and remove it from queue 
         node = queue.pop(0) 
+        ind = indStack.pop(0)
         idx = idxStack.pop(0)
+
                 
         # left child 
         if node.left is not None: 
@@ -339,10 +343,11 @@ def visualize_tree(root,data,outpath,filename,compact=False):
             queue.append(node.left)
             i = i + 1
             idxStack.append(i)
+            indStack.append(node.left.ind)
             #print(str(i)+'_'+node.left.key)
             
             percent = str(round(len(node.left.indices)/tot_cells*100,2))+'%'
-            mean_temp = data.loc[node.left.indices,:].mean(0) 
+            mean_temp = data.loc[node.left.indices,:].mean(axis=0) 
             
             if node.left.key == ('leaf',):
                 # left leaf node       
@@ -355,7 +360,7 @@ def visualize_tree(root,data,outpath,filename,compact=False):
                         offset_in_leaf = offset_in_leaf + '\n' + markers[k]+': '+ str(round(temp[markers[k]],2))
                     
                 col =  matplotlib.colors.to_hex(matplotlib.cm.Greens(leaf_col(np.log(len(node.left.indices)))))
-                tree_dot.writelines(str(i)+' [label="'+str(i)+'_'+'_'.join(node.left.key)+'\\n'+ \
+                tree_dot.writelines(str(node.left.ind)+' [label="'+str(node.left.ind)+'_'+'_'.join(node.left.key)+'\\n'+ \
                                     str(len(node.left.indices))+ ' ('+percent+')\\n'+ \
                                     offset_in_leaf+'",fillcolor="'+col+'",fontsize=20];')
             else:
@@ -364,7 +369,7 @@ def visualize_tree(root,data,outpath,filename,compact=False):
                 bp_ncluster = all_clustering[node.left.key]['bp_ncluster']
                 mp_ncluster = all_clustering[node.left.key]['mp_ncluster']
                 
-                tree_dot.writelines(str(i)+' [label="'+str(i)+'_'+'_'.join(node.left.key)+'\\n'+ \
+                tree_dot.writelines(str(node.left.ind)+' [label="'+str(node.left.ind)+'_'+'_'.join(node.left.key)+'\\n'+ \
                                     str(len(node.left.indices))+' ('+percent+')\\n'+ \
                                     '('+str(mp_ncluster)+'|'+str(bp_ncluster)+')",fillcolor="'+branch_col[len(node.left.key)]+'",fontsize=25];')
 
@@ -374,7 +379,7 @@ def visualize_tree(root,data,outpath,filename,compact=False):
                 val = (mean_temp[m] - means_in_root[m])/stds_in_root[m]
                 offset = offset + str(round(val,2))+'\n'
             #print(str(idx)+'->'+str(i))
-            tree_dot.writelines(str(idx)+' -> '+str(i)+ ' [labeldistance=3, label = "'+offset+'",fontsize=25, color='+['black','red'][node.where_dominant=='left']+\
+            tree_dot.writelines(str(ind)+' -> '+str(node.left.ind)+ ' [labeldistance=3, label = "'+offset+'",fontsize=25, color='+['black','red'][node.where_dominant=='left']+\
                                 ', style='+['solid','bold'][node.where_dominant=='left']+'];')
 
         # right child 
@@ -383,10 +388,11 @@ def visualize_tree(root,data,outpath,filename,compact=False):
             queue.append(node.right) 
             i = i + 1
             idxStack.append(i)
+            indStack.append(node.right.ind)
             #print(str(i)+'_'+node.right.key)
             
             percent = str(round(len(node.right.indices)/tot_cells*100,2))+'%'
-            mean_temp = data.loc[node.right.indices,:].mean(0) 
+            mean_temp = data.loc[node.right.indices,:].mean(axis=0) 
 
             if node.right.key == ('leaf',):
                 # right leaf node
@@ -399,7 +405,7 @@ def visualize_tree(root,data,outpath,filename,compact=False):
                         offset_in_leaf = offset_in_leaf + '\n' + markers[k]+': '+ str(round(temp[markers[k]],2))
 
                 col =  matplotlib.colors.to_hex(matplotlib.cm.Greens(leaf_col(np.log(len(node.right.indices)))))
-                tree_dot.writelines(str(i)+' [label="'+str(i)+'_'+'_'.join(node.right.key)+'\\n'+ \
+                tree_dot.writelines(str(node.right.ind)+' [label="'+str(node.right.ind)+'_'+'_'.join(node.right.key)+'\\n'+ \
                                     str(len(node.right.indices))+ ' ('+percent+')'+'\\n'+ \
                                     offset_in_leaf+'",fillcolor="'+col+'",fontsize=20];')
 
@@ -409,7 +415,7 @@ def visualize_tree(root,data,outpath,filename,compact=False):
                 bp_ncluster = all_clustering[node.right.key]['bp_ncluster']
                 mp_ncluster = all_clustering[node.right.key]['mp_ncluster']
                 
-                tree_dot.writelines(str(i)+' [label="'+str(i)+'_'+'_'.join(node.right.key)+'\\n'+ \
+                tree_dot.writelines(str(node.right.ind)+' [label="'+str(node.right.ind)+'_'+'_'.join(node.right.key)+'\\n'+ \
                                     str(len(node.right.indices))+' ('+percent+')\\n'+ \
                                     '('+str(mp_ncluster)+'|'+str(bp_ncluster)+')",fillcolor="'+branch_col[len(node.right.key)]+'",fontsize=25];')
 
@@ -418,8 +424,8 @@ def visualize_tree(root,data,outpath,filename,compact=False):
             for m in nodelist[idx]:
                 val = (mean_temp[m] - means_in_root[m])/stds_in_root[m]
                 offset = offset + str(round(val,2))+'\n'
-            #print(str(idx)+'->'+str(i))
-            tree_dot.writelines(str(idx)+' -> '+str(i)+' [labeldistance=3, label = "'+offset+'",fontsize=25, color='+['black','red'][node.where_dominant=='right']+ \
+            #print(str(idx)+'->'+str(node.ind))
+            tree_dot.writelines(str(ind)+' -> '+str(node.right.ind)+' [labeldistance=3, label = "'+offset+'",fontsize=25, color='+['black','red'][node.where_dominant=='right']+ \
                                 ', style='+['solid','bold'][node.where_dominant=='right']+'];')
     
     # main body is completed

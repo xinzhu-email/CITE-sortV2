@@ -9,7 +9,8 @@ Created on Sun Aug 18 15:41:14 2019
 class BTree:
 
     def __init__(self, key, left = None, right = None, indices = None, stop=None,\
-                 all_clustering_dic = None, where_dominant = None,weight=None,ll=None,bic=None):
+                 all_clustering_dic = None, where_dominant = None, weight=None, ll=None, bic=None,\
+                 score_ll=None, child_right=None, child_left=None, w_l=None, w_r=None, ind=None, marker=None):
         self.key = key # a str
         self.right = right # a BstNode
         self.left = left # a BstNode
@@ -22,6 +23,13 @@ class BTree:
         #self.para = para # a {} parameters for qualified components
         self.where_dominant = where_dominant # str ("left"/"right"), indicator of edge color
         self.stop = stop # legacy
+        self.score_ll = score_ll
+        self.child_right = child_right
+        self.child_left = child_left
+        self.w_l = w_l
+        self.w_r = w_r
+        self.ind = ind
+        self.marker = marker
             
     
     def display(self):

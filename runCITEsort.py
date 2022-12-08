@@ -10,11 +10,12 @@ import pandas as pd
 from CITEsort.Matryoshka import Matryoshka
 from CITEsort.Visualize import visualize_tree
 from CITEsort.BTreeTraversal import BTreeTraversal
-from CITEsort.ReSplit import ReSplit
+from CITEsort.ReSplit import ReSplit, Choose_leaf
 import pickle
 import argparse
 import os
 import time
+import matplotlib.pyplot as plt
 
 #from sys import argv
 
@@ -39,7 +40,8 @@ def main():
     print('read data and run CITE-sort.')
 
     data = pd.read_csv(data_path,header = 0, index_col=0)
-    tree = ReSplit(data,merge_cutoff)
+    tree, bic_list, min_bic_node = Choose_leaf(data=data)
+    # tree = ReSplit(data,merge_cutoff)
     #tree = Matryoshka(data,merge_cutoff)
     print('done.\nplot tree.')
     visualize_tree(tree,data,output_path,'tree',compact=compact_flag)
@@ -49,12 +51,18 @@ def main():
     f.close()
     
     print('generate labels.')
-    traversal = BTreeTraversal(tree)
+    
+    traversal = BTreeTraversal(tree,save_min_BIC=False, min_BIC_node=min_bic_node)
     leaves_labels = traversal.get_leaf_label()
     leaves_labels.to_csv(output_path + '/leaf_labels.csv',index=False)
+    leaves_labels = traversal.get_leaf_label(BIC_node=True)
+    leaves_labels.to_csv(output_path + '/BIC_stop_labels.csv',index=False)
+
     endtime = time.time()
 
     print('Time using: ', round(endtime-starttime, 3),'secs')
+    plt.plot(list(range(len(bic_list))), bic_list)
+    plt.savefig('BIC_as_split.png')
 
 if __name__ == "__main__":
     main()

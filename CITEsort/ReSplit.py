@@ -22,7 +22,9 @@ import copy
 import random
 
 
-def ReSplit(data,leaf_dict,merge_cutoff=0.1,weight=1,max_k=10,max_ndim=2,bic='bic'): #leaf_dict save leaf node at that time, null in initial
+
+
+def ReSplit_new(data,leaf_dict=None,merge_cutoff=0.1,weight=1,max_k=10,max_ndim=2,bic='bic'): #leaf_dict save leaf node at that time, null in initial
     
     root = BTree(('leaf',)) # construct sort tree
     root.indices = data.index.values.tolist() # 
@@ -59,7 +61,7 @@ def ReSplit(data,leaf_dict,merge_cutoff=0.1,weight=1,max_k=10,max_ndim=2,bic='bi
         if len(separable_features) == 0:
             continue
         separable = True
-        
+
         #print(separable_features)
         #print(scores_ll)
         #print(bic_list)
@@ -119,8 +121,8 @@ def ReSplit(data,leaf_dict,merge_cutoff=0.1,weight=1,max_k=10,max_ndim=2,bic='bi
     #root.para = para
 
     ## branch cells, component with higher mean goes right.
-    p1_mean = data.loc[best_partition, best_feature].mean(0)
-    p2_mean = data.loc[~best_partition, best_feature].mean(0)
+    p1_mean = data.loc[best_partition, best_feature].mean(axis=0)
+    p2_mean = data.loc[~best_partition, best_feature].mean(axis=0)
     
     flag = True
     if len(p1_mean) == 1:
@@ -154,6 +156,168 @@ def ReSplit(data,leaf_dict,merge_cutoff=0.1,weight=1,max_k=10,max_ndim=2,bic='bi
 
     return root
 
+def all_BIC(leaf_dict, n_features):
+        ll, n_features, n_sample = 0, 0, 0
+        for key,node in leaf_dict.items():
+            ll = ll + node.ll * node.weight 
+            # n_features = n_features + len(node.key)
+            n_sample = n_sample + len(node.indices)
+            # node_name.append(str(key))
+        cov_params = len(leaf_dict) * n_features * (n_features + 1) / 2.0
+        mean_params = n_features * len(leaf_dict)
+        n_param = int(cov_params + mean_params + len(leaf_dict) - 1)
+        bic_score = -2 * ll * n_sample + n_param * np.log(n_sample)
+
+        return bic_score
+
+def Choose_leaf(leaf_dict=None,data=None,bic_list=[],leaf_list=None,n_features=0,merge_cutoff=0.1,max_k=10,max_ndim=2,bic='bic'):
+    if leaf_dict == None:
+        root=ReSplit(data,merge_cutoff,marker_set=[])
+        leaf_dict = {0: root}
+        root.ind = 0
+        leaf_list = [root]
+        
+    ### _____Choose maxmum loglikely hood gain as new root_____
+    max_ll, max_root, separable = 0, None, False
+    # print(leaf_dict.items())
+    for key in list(leaf_dict.keys()):
+        node = leaf_dict[key]
+        if node.stop != None:
+            # leaf_dict.pop(node.ind)
+            continue
+        separable = True
+        if node.score_ll >= max_ll:
+            max_ll = node.score_ll
+            max_root = node
+        # else:
+        #     leaf_dict.pop(node.ind)
+        #     leaf_dict[node.ind] = node
+    bic_min_node = leaf_list  
+    if separable:
+        max_root.left = ReSplit(max_root.child_left, merge_cutoff, max_root.weight * max_root.w_l, max_k, max_ndim, bic, marker_set=max_root.marker)
+        max_root.left.ind = max(leaf_dict.keys()) + 1
+        leaf_dict[max_root.left.ind] = max_root.left
+
+        max_root.right = ReSplit(max_root.child_right, merge_cutoff, max_root.weight * max_root.w_r, max_k, max_ndim, bic, marker_set=max_root.marker)
+        max_root.right.ind = max(leaf_dict.keys()) + 1
+        leaf_dict[max_root.right.ind] = max_root.right
+
+        leaf_dict.pop(max_root.ind)
+        leaf_list = [x for x in leaf_list if x!=max_root]
+        leaf_list.append(max_root.left)
+        leaf_list.append(max_root.right)
+        
+        n_features = n_features + len(max_root.key)
+        bic_score = all_BIC(leaf_dict, n_features)
+        bic_list.append(bic_score)
+        
+
+        node, bic_list, bic_min_node = Choose_leaf(leaf_dict=leaf_dict, bic_list=bic_list, leaf_list=leaf_list, n_features=n_features)
+        if bic_score <= min(bic_list):
+            bic_min_node = leaf_list
+    return max_root, bic_list, bic_min_node
+
+
+def ReSplit(data=None,merge_cutoff=0.1,weight=1,max_k=10,max_ndim=2,bic='bic',marker_set=None):
+
+    root = BTree(('leaf',))
+    root.indices = data.index.values.tolist()
+    root.weight = weight
+    root.stop = None
+    root.marker = marker_set
+    
+    #if len(root.indices) < 500:
+    #    print(root.indices)
+
+    if data.shape[0] < 2:        
+        root.all_clustering_dic = _set_small_leaf(data)
+        root.stop = 'small size'
+        return root
+
+    unimodal = GaussianMixture(1,covariance_type='full').fit(data)
+    root.ll = root.weight * unimodal.lower_bound_
+    root.bic = unimodal.bic(data)
+
+    separable_features, bipartitions, scores_ll, bic_list, all_clustering_dic = HiScanFeatures(data,root,merge_cutoff,max_k,max_ndim,bic)
+
+    if len(separable_features) == 0:
+        root.all_clustering_dic = all_clustering_dic
+        root.stop = 'no separable features'
+        return root
+
+    '''
+    scores_ll = np.zeros(len(separable_features))
+    bic_list = np.zeros(len(separable_features))
+    for fidx in range(len(separable_features)):
+        f = separable_features[fidx]
+        if np.sum(bipartitions[f]) < 2 or np.sum(~bipartitions[f]) < 2:
+            continue
+        gmm1 = GaussianMixture(1,covariance_type='full').fit(data.loc[bipartitions[f],:])
+        ll1 = gmm1.lower_bound_ * sum(bipartitions[f])/len(bipartitions[f])
+        bic1 = gmm1.bic(data.loc[bipartitions[f],:]) 
+        
+        gmm0 = GaussianMixture(1,covariance_type='full').fit(data.loc[~bipartitions[f],:])
+        ll0 = gmm0.lower_bound_ * sum(~bipartitions[f])/len(bipartitions[f])
+        bic0 = gmm0.bic(data.loc[~bipartitions[f],:]) 
+        
+        scores_ll[fidx] = (ll1 + ll0) * root.weight - root.ll
+        bic_list[fidx] = bic1 + bic0
+    '''
+    #print(separable_features)
+    #print(scores_ll)
+    #print(bic_list)
+    idx_best = np.argmax(scores_ll)
+    if np.max(scores_ll) < 0.001:
+    #if root.bic < bic_list[idx_best]:
+        root.stop = 'spliting increases bic'
+        return root
+
+    #idx_best = np.argmax(scores_ent)
+    best_feature = separable_features[idx_best]
+    best_partition = bipartitions[best_feature]
+    best_score = scores_ll[idx_best]
+    #best_weights = all_clustering_dic[len(best_feature)][best_feature]['weight']
+
+    ## construct current node  
+    root.key = best_feature
+    root.all_clustering_dic = all_clustering_dic
+    root.score_ll = best_score
+    root.marker = root.marker + list(best_feature)
+    print('root.marker:',root.marker)
+    #root.marker_summary = marker_summary
+    #root.para = para
+
+    ## branch cells, component with higher mean goes right.
+    p1_mean = data.loc[best_partition, best_feature].mean(axis=0)
+    p2_mean = data.loc[~best_partition, best_feature].mean(axis=0)
+
+    flag = True
+    if len(p1_mean) == 1:
+        flag = p1_mean.values > p2_mean.values
+    else:
+        p1_cosine = sum(p1_mean)/np.sqrt(sum(p1_mean**2))
+        p2_cosine = sum(p2_mean)/np.sqrt(sum(p2_mean**2))
+        flag = p1_cosine > p2_cosine
+
+    if flag:
+        root.child_right = data.iloc[best_partition, :]
+        root.w_r = sum(best_partition)/len(best_partition)
+        root.child_left = data.iloc[~best_partition, :] 
+        root.w_l = sum(~best_partition)/len(best_partition)
+        root.where_dominant = 'right'
+    else:
+        root.child_right = data.iloc[~best_partition, :]
+        root.w_r = sum(~best_partition)/len(best_partition)
+        root.child_left = data.iloc[best_partition, :]
+        root.w_l = sum(best_partition)/len(best_partition)
+        root.where_dominant = 'left'
+
+    ## recursion
+    # root.left = ReSplit(child_left,merge_cutoff,weight * w_l,max_k,max_ndim,bic)
+    # root.right = ReSplit(child_right,merge_cutoff,weight * w_r,max_k,max_ndim,bic)
+
+    return root
+
 
 
 def HiScanFeatures(data,root,merge_cutoff,max_k,max_ndim,bic):
@@ -176,7 +340,7 @@ def HiScanFeatures(data,root,merge_cutoff,max_k,max_ndim,bic):
                 separable_features, bipartitions, scores, bic_list, all_clustering_dic[ndim] = ScoreFeatures(data,root,0.5,max_k,len(rescan_features),bic)
                 break
             
-            separable_features, bipartitions, scores,bic_list, all_clustering_dic[ndim] = ScoreFeatures(data[rescan_features],root,0.5,max_k,ndim,bic)
+            separable_features, bipartitions, scores,bic_list, all_clustering_dic[ndim] = ScoreFeatures(data,root,0.5,max_k,ndim,bic,rescan_features)
             if len(separable_features) >= 1:
                 break
         
@@ -184,9 +348,12 @@ def HiScanFeatures(data,root,merge_cutoff,max_k,max_ndim,bic):
     
 
 
-def ScoreFeatures(data,root,merge_cutoff,max_k,ndim,bic):
+def ScoreFeatures(data,root,merge_cutoff,max_k,ndim,bic,rescan_features=None):
     
-    F_set = data.columns.values.tolist() # Feature list
+    if rescan_features != None:
+        F_set = rescan_features
+    else:
+        F_set = data.columns.values.tolist() # Feature list
     
     all_clustering = {}
     separable_features = []
@@ -210,14 +377,18 @@ def ScoreFeatures(data,root,merge_cutoff,max_k,ndim,bic):
             bic_mlabels = []
             for mlabel in labels:
                 assignment = merged_label == mlabel
-            
-                gmm1 = GaussianMixture(1,covariance_type='full').fit(data.loc[assignment,:])
+
+                marker_list = root.marker + list(item) # Choose only marker to calculate loglikelyhood
+                # print('marker_list:',marker_list)
+
+                # print(data.columns)
+                gmm1 = GaussianMixture(1,covariance_type='full').fit(data.loc[assignment,marker_list]) # All features used
                 ll1 = gmm1.lower_bound_ * sum(assignment)/len(assignment)
-                bic1 = gmm1.bic(data.loc[assignment,:]) 
+                bic1 = gmm1.bic(data.loc[assignment,marker_list]) 
                 
-                gmm0 = GaussianMixture(1,covariance_type='full').fit(data.loc[~assignment,:])
+                gmm0 = GaussianMixture(1,covariance_type='full').fit(data.loc[~assignment,marker_list])
                 ll0 = gmm0.lower_bound_ * sum(~assignment)/len(assignment)
-                bic0 = gmm0.bic(data.loc[~assignment,:]) 
+                bic0 = gmm0.bic(data.loc[~assignment,marker_list]) 
                 
                 ll_gain.append(  (ll1 + ll0) * root.weight - root.ll  )
                 bic_mlabels.append( bic1 + bic0 )

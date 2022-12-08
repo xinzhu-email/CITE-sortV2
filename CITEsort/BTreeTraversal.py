@@ -24,19 +24,25 @@ import pdb
 
 class BTreeTraversal:
     
-    def __init__(self,tree,method='bfs',nodelist=None,nodename=None,tree_summary=None,leaf_summary=None,ll=None,n_components=None):
+    def __init__(self,tree,method='bfs',min_BIC_node=None,nodename=None,tree_summary=None,leaf_summary=None,ll=None,n_components=None,save_min_BIC=False):
         
         #print('initializing...')
         
         self.tree = tree
         self.method = method
+        self.save_min_BIC = save_min_BIC
+        self.min_BIC_node = min_BIC_node
         if self.method == 'bfs':
-            self.nodelist, self.best_leaf = self.levelOrderTraversal()
+            self.nodelist = self.levelOrderTraversal()
         if self.method == 'dfs':
             self.nodelist = self.preorderTraversal()
-        
-        nodename_temp = ['_'.join(x.key) for x in self.nodelist]
-        self.nodename = [str(i)+'_'+nodename_temp[i] for i in range(len(nodename_temp))]
+
+        self.nodename = [str(x.ind)+'_'+'_'.join(x.key) for x in self.min_BIC_node]
+        self.leafname = [str(x.ind)+'_'+'_'.join(x.key) for x in self.nodelist]
+
+        print(self.nodename)
+        print(self.leafname)
+        # self.nodename = [str(i)+'_'+nodename_temp[i] for i in range(len(nodename_temp))]
         self.tree_summary, self.leaf_summary = self.summarize()
         if 'll' in self.tree.__dir__():
             self.ll = self.leaf_summary['ll'].sum()
@@ -49,11 +55,12 @@ class BTreeTraversal:
                                          'Weight':[x.weight for x in self.nodelist],
                                          'Stop':[x.stop for x in self.nodelist],
                                          'll':[x.ll for x in self.nodelist]
-                                         },index=self.nodename)
+                                         },index=self.leafname)
         else:
-            tree_summary = pd.DataFrame({'Count':[len(x.indices) for x in self.nodelist] },index=self.nodename)  
+            tree_summary = pd.DataFrame({'Count':[len(x.indices) for x in self.nodelist] },index=self.leafname)  
 
-        leaf_summary = tree_summary.loc[[x for x in self.nodename if x.split('_')[1]=='leaf'],:]
+        leaf_summary = tree_summary.loc[[x for x in self.leafname if x.split('_')[1]=='leaf'],:]
+        # leaf_summary = tree_summary.loc[[i for i in range(len(self.nodename)) if self.nodename[i].split('_')[1]=='leaf'],:]
         leaf_summary = leaf_summary.sort_values(by='Count',ascending=False)
         
         return tree_summary,leaf_summary
@@ -82,15 +89,18 @@ class BTreeTraversal:
     
     
     
-    def get_leaf_label(self):
+    def get_leaf_label(self, BIC_node=False):
         """generate label (one column, indicating which leaf cells are assigned.)"""
         label = pd.DataFrame({'GEM':self.tree.indices,'Label':[None]*len(self.tree.indices)},index=self.tree.indices)
-        for i in range(len(self.nodename)):
-            # if self.nodename[i].split('_')[1] == 'leaf':
-            #     label.loc[self.nodelist[i].indices,'Label'] = self.nodename[i]
-            if self.nodename[i].split('_')[0] in self.best_leaf:
-                label.loc[self.nodelist[i].indices,'Label'] = self.nodename[i]
-                
+        
+        if BIC_node:
+            for i in range(len(self.nodename)):
+                label.loc[self.min_BIC_node[i].indices,'Label'] = self.nodename[i]
+        else:
+            for i in range(len(self.leafname)):
+                if self.leafname[i].split('_')[1] == 'leaf':
+                    label.loc[self.nodelist[i].indices,'Label'] = self.leafname[i]
+
         return label
     
 
@@ -235,7 +245,7 @@ class BTreeTraversal:
         return bic, node_name
 
     # bfs
-    def levelOrderTraversal(self): 
+    def _levelOrderTraversal(self): 
         #print('bfs...')
         node = self.tree
         if node is None: 
@@ -255,32 +265,63 @@ class BTreeTraversal:
         while(len(queue) > 0): 
             node = queue.pop(0)  
             name = str(node)
-            if node.left is not None and node.right is not None:
+            if self.save_min_BIC and node.left is not None and node.right is not None:
                 bic_queue = {key:val for key, val in bic_queue.items() if str(val) != name}
 
             if node.left is not None:                
                 nodelist.append(node.left)
                 queue.append(node.left)
-                leaf_ind = leaf_ind + 1
-                bic_queue[leaf_ind] = node.left
+                # leaf_ind = leaf_ind + 1
+                # bic_queue[leaf_ind] = node.left
 
             if node.right is not None: 
                 nodelist.append(node.right)
                 queue.append(node.right)
-                leaf_ind = leaf_ind + 1
-                bic_queue[leaf_ind] = node.right
-                bic, node_name = self.all_BIC(bic_queue)
-                BIC_list.append(bic)
-                n_cluster_list.append(len(node_name))
-                node_dict[bic] = node_name
-        min_node = min(list(node_dict.keys()))
-        min_list = node_dict[min_node]
-        print(n_cluster_list, BIC_list)
-        plt.plot(n_cluster_list, BIC_list)
-        plt.savefig('BIC_as_split.png')
-        return nodelist, min_list
+                # leaf_ind = leaf_ind + 1
+                # bic_queue[leaf_ind] = node.right
+                if self.save_min_BIC:
+                    bic, node_name = self.all_BIC(bic_queue)
+                    BIC_list.append(bic)
+                    n_cluster_list.append(len(node_name))
+                    node_dict[bic] = node_name
+
+        if self.save_min_BIC:
+            min_node = min(list(node_dict.keys()))
+            min_list = node_dict[min_node]
+            print(n_cluster_list, BIC_list)
+            plt.plot(n_cluster_list, BIC_list)
+            plt.savefig('BIC_as_split.png')
+            # print('nodelist0',nodelist)
+            return nodelist, min_list
+        
+        else:
+            return nodelist
 
 
+    def levelOrderTraversal(self): 
+        #print('bfs...')
+        node = self.tree
+        if node is None: 
+            return
+
+        queue = [] 
+        nodelist = []
+
+        queue.append(node) 
+        nodelist.append(node)
+
+        while(len(queue) > 0): 
+            node = queue.pop(0)         
+
+            if node.left is not None: 
+                nodelist.append(node.left)
+                queue.append(node.left)
+
+            if node.right is not None: 
+                nodelist.append(node.right)
+                queue.append(node.right) 
+
+        return nodelist
  
 
 
