@@ -242,8 +242,8 @@ def plot_keymarker(data,traversal,node_ID,dpi=5,savepath=None):
         mp_ncluster = clustering['mp_ncluster']
         #mp_clustering = clustering['mp_clustering']
         componentidx = np.array(clustering['mp_clustering'])==1
-        p1_mean = node_data.loc[componentidx,marker_dkey].mean(axis=0)
-        p2_mean = node_data.loc[~componentidx,marker_dkey].mean(axis=0)
+        p1_mean = node_data.loc[componentidx,marker_dkey].mean()
+        p2_mean = node_data.loc[~componentidx,marker_dkey].mean()
         
         p1_cosine = sum(p1_mean)/np.sqrt(sum(p1_mean**2))
         p2_cosine = sum(p2_mean)/np.sqrt(sum(p2_mean**2))
@@ -347,7 +347,7 @@ def visualize_tree(root,data,outpath,filename,compact=False):
             #print(str(i)+'_'+node.left.key)
             
             percent = str(round(len(node.left.indices)/tot_cells*100,2))+'%'
-            mean_temp = data.loc[node.left.indices,:].mean(axis=0) 
+            mean_temp = data.loc[node.left.indices,:].mean() 
             
             if node.left.key == ('leaf',):
                 # left leaf node       
@@ -392,7 +392,7 @@ def visualize_tree(root,data,outpath,filename,compact=False):
             #print(str(i)+'_'+node.right.key)
             
             percent = str(round(len(node.right.indices)/tot_cells*100,2))+'%'
-            mean_temp = data.loc[node.right.indices,:].mean(axis=0) 
+            mean_temp = data.loc[node.right.indices,:].mean() 
 
             if node.right.key == ('leaf',):
                 # right leaf node

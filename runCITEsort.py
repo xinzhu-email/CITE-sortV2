@@ -16,6 +16,8 @@ import argparse
 import os
 import time
 import matplotlib.pyplot as plt
+import warnings
+warnings.filterwarnings("ignore")
 
 #from sys import argv
 

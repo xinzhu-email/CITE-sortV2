@@ -41,8 +41,8 @@ def Matryoshka(data,merge_cutoff=0.1,max_k=10,max_ndim=2,bic='bic'):
     #root.para = para
 
     ## branch cells, component with higher mean goes right.
-    p1_mean = data.loc[best_partition, best_feature].mean(axis=0)
-    p2_mean = data.loc[~best_partition, best_feature].mean(axis=0)
+    p1_mean = data.loc[best_partition, best_feature].mean()
+    p2_mean = data.loc[~best_partition, best_feature].mean()
     
     flag = True
     if len(p1_mean) == 1:
